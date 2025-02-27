@@ -1,0 +1,33 @@
+// React.js Frontend Implementation
+import React, { useState, useEffect } from 'react';
+import { FiBallot } from 'react-icons/fi';
+import { ethers } from 'ethers';
+import { contractAddress,abi } from './config.json';
+
+function VotingApp() {
+    const [elections, setElections] = useState([]);
+    const [selectedElection, setSelectedElection] = useState(null);
+    const [votes, setVotes] = useState({});
+    const [candidates, setCandidates] = useState([]);
+    
+    useEffect(() => {
+        fetchElections();
+    }, []);
+
+    const fetchElections = async () => {
+        try {
+            const response = await fetch('http://localhost:3000/api/fetch-elections');
+            const data = await response.json();
+            setElections(data);
+            setSelectedElection(data[0]);
+        } catch (error) {
+            console.error('Error fetching elections:', error);
+        }
+    };
+
+    const castVote = async (candidate) => {
+        if (!selectedElection) return;
+
+        const vote = {
+            candidate,
+            voter: ethers.utils.createFundedAddress('0x0f8d2bB7f51e5b8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ecf39b8a8ec
