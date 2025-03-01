@@ -1,75 +1,60 @@
 class TaskQueue {
-    constructor() {
-        this.queue = [];
-        this.running = 0;
-        this.promises = [];
+    constructor(maxConcurrent = 3) {
+        this.maxConcurrent = maxConcurrent;
+        this.pendingTasks = [];
+        this.activeTasks = 0;
     }
 
-    async addTask(task) {
+    enqueueTask(task) {
         return new Promise((resolve, reject) => {
-            this.queue.push(task);
-
-            // Cancel any pending tasks if we're adding a new one
-            while (this.running > 2 && this.promises.length > 0) {
-                this.promises.shift().reject();
-            }
-
-            if (this.running < 3) {
-                this.running++;
-                this.promises.push(resolve);
-
-                // Start the task after a short delay to allow for cancellation
-                setTimeout(() => {
-                    try {
-                        task();
-                        resolve();
-                    } catch (error) {
-                        reject(error);
-                    }
-                }, 50); // Short delay to allow for task cancellation
-            }
+            this.pendingTasks.push({ task, resolve, reject });
+            this.processQueue();
         });
+    }
+
+    async processQueue() {
+        while (this.pendingTasks.length > 0 && this.activeTasks < this.maxConcurrent) {
+            const { task, resolve, reject } = this.pendingTasks.shift();
+            this.activeTasks++;
+            try {
+                await task();
+                resolve();
+            } catch (error) {
+                reject(error);
+            } finally {
+                this.activeTasks--;
+                this.processQueue();
+            }
+        }
     }
 }
 
 // Example usage:
-const queue = new TaskQueue();
+const taskQueue = new TaskQueue(3);
 
-// Add tasks to the queue
-queue.addTask(() => {
-    console.log('Task 1 started');
-    setTimeout(() => {
-        console.log('Task 1 completed');
-    }, 1000);
-});
+// Example tasks
+async function task1() {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('Task 1 completed');
+}
 
-queue.addTask(() => {
-    console.log('Task 2 started');
-    setTimeout(() => {
-        console.log('Task 2 completed');
-    }, 2000);
-});
+async function task2() {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    console.log('Task 2 completed');
+}
 
-queue.addTask(() => {
-    console.log('Task 3 started');
-    setTimeout(() => {
-        console.log('Task 3 completed');
-    }, 3000);
-});
+async function task3() {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    console.log('Task 3 completed');
+}
 
-// After a short delay, add more tasks
-setTimeout(() => {
-    console.log('\nAdding more tasks...');
+async function task4() {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    console.log('Task 4 completed');
+}
 
-    queue.addTask(() => {
-        console.log('Task 4 started');
-        setTimeout(() => {
-            console.log('Task 4 completed');
-        }, 4000);
-    });
-
-    // Cancel pending tasks if necessary
-    while (queue.promises.length > 3) {
-        queue.promises.shift();
-    }
-}, 1000);
+// Enqueue tasks
+taskQueue.enqueueTask(task1).then(() => console.log('Task 1 done'));
+taskQueue.enqueueTask(task2).then(() => console.log('Task 2 done'));
+taskQueue.enqueueTask(task3).then(() => console.log('Task 3 done'));
+taskQueue.enqueueTask(task4).then(() => console.log('Task 4 done'));

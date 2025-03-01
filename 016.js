@@ -1,206 +1,182 @@
+// Server-side code
 const express = require('express');
-const router = express.Router();
-const pg = require('pg');
-const uuid = require('uuid');
-const fs = require('fs');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const { Pool } = require('pg');
 
-// Database connection configuration
-const config = {
-    host: 'your-database-host',
-    database: 'your-database-name',
-    user: 'your-database-user',
-    password: 'your-database-password',
-    port: 5432
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Database configuration
+const dbConfig = {
+    user: 'your_username',
+    host: 'localhost',
+    database: 'polls',
+    password: 'your_password',
+    port: 5432,
 };
 
-// Initialize the router
-router.get('/polls', (req, res) => {
-    // Get all polls from the database
-    const query = 'SELECT * FROM polls';
-    const conn = await pg.connect(config);
+const pool = new Pool(dbConfig);
 
+// Middleware
+app.use(bodyParser.json());
+app.use(cors());
+
+// Routes
+app.post('/api/create-poll', createPoll);
+app.post('/api/vote', vote);
+app.get('/api/results', getResults);
+
+// Create poll
+async function createPoll(req, res) {
     try {
-        const result = await conn.query(query);
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching polls:', error);
-        res.status(500).json({ error: 'Failed to fetch polls' });
-    } finally {
-        conn.end();
-    }
-});
+        const { question, options } = req.body;
+        const result = await pool.query(`
+            INSERT INTO polls (question, created_at)
+            VALUES ($1, NOW())
+            RETURNING *`, [question]);
 
-// Create a new poll
-router.post('/create-poll', (req, res) => {
-    const { title, question, options } = req.body;
+        const pollId = result.rows[0].id;
 
-    if (!title || !question || !Array.isArray(options)) {
-        return res.status(400).json({ error: 'Invalid poll data' });
-    }
+        for (const option of options) {
+            await pool.query(`
+                INSERT INTO poll_options (poll_id, option, votes)
+                VALUES ($1, $2, 0)`, [pollId, option]);
+        }
 
-    const newPoll = {
-        id: uuid.v4(),
-        title,
-        question,
-        options: options.map(option => ({
-            text: option.text,
-            votes: 0
-        })),
-        createdAt: new Date().toISOString()
-    };
-
-    const conn = await pg.connect(config);
-
-    try {
-        const query = 'INSERT INTO polls (id, title, question, options, created_at) VALUES ($1, $2, $3, $4, $5)';
-        const result = await conn.query(query, [
-            newPoll.id,
-            newPoll.title,
-            newPoll.question,
-            newPoll.options,
-            newPoll.createdAt
-        ]);
-
-        res.json({ id: newPoll.id, success: true });
+        res.status(201).json({ pollId });
     } catch (error) {
         console.error('Error creating poll:', error);
         res.status(500).json({ error: 'Failed to create poll' });
-    } finally {
-        conn.end();
     }
-});
+}
 
-// Get poll details
-router.get('/poll/:id', (req, res) => {
-    const conn = await pg.connect(config);
-
+// Vote
+async function vote(req, res) {
     try {
-        const query = 'SELECT * FROM polls WHERE id = $1';
-        const result = await conn.query(query, [req.params.id]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Poll not found' });
+        const { pollId, optionId } = req.body;
+        if (!pollId || !optionId) {
+            return res.status(400).json({ error: 'Missing poll or option ID' });
         }
 
-        res.json(result.rows[0]);
+        await pool.query(`
+            UPDATE poll_options
+            SET votes = votes + 1
+            WHERE id = $1`, [optionId]);
+
+        res.status(200).json({ message: 'Vote recorded successfully' });
     } catch (error) {
-        console.error('Error fetching poll details:', error);
-        res.status(500).json({ error: 'Failed to fetch poll details' });
-    } finally {
-        conn.end();
+        console.error('Error recording vote:', error);
+        res.status(500).json({ error: 'Failed to record vote' });
     }
-});
+}
 
-// Update poll
-router.put('/update-poll/:id', (req, res) => {
-    const { title, question, options } = req.body;
-
-    if (!title || !question || !Array.isArray(options)) {
-        return res.status(400).json({ error: 'Invalid poll data' });
-    }
-
-    const conn = await pg.connect(config);
-
+// Get results
+async function getResults(req, res) {
     try {
-        const query = 'UPDATE polls SET title = $1, question = $2, options = $3 WHERE id = $4';
-        const result = await conn.query(query, [
-            title,
-            question,
-            options,
-            req.params.id
-        ]);
-
-        res.json({ id: req.params.id, success: true });
-    } catch (error) {
-        console.error('Error updating poll:', error);
-        res.status(500).json({ error: 'Failed to update poll' });
-    } finally {
-        conn.end();
-    }
-});
-
-// Delete poll
-router.delete('/delete-poll/:id', (req, res) => {
-    const conn = await pg.connect(config);
-
-    try {
-        const query = 'DELETE FROM polls WHERE id = $1';
-        const result = await conn.query(query, [req.params.id]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Poll not found' });
+        const { pollId } = req.query;
+        if (!pollId) {
+            return res.status(400).json({ error: 'Missing poll ID' });
         }
 
-        res.json({ id: req.params.id, success: true });
+        const results = await pool.query(`
+            SELECT p.question, po.option, po.votes
+            FROM polls p
+            LEFT JOIN poll_options po ON p.id = po.poll_id
+            WHERE p.id = $1`, [pollId]);
+
+        res.status(200).json(results.rows);
     } catch (error) {
-        console.error('Error deleting poll:', error);
-        res.status(500).json({ error: 'Failed to delete poll' });
-    } finally {
-        conn.end();
+        console.error('Error fetching results:', error);
+        res.status(500).json({ error: 'Failed to fetch results' });
     }
+}
+
+// Start server
+app.listen(port, () => {
+    console.log(`Polling system server running on port ${port}`);
 });
+// Client-side code
+const createPollForm = document.getElementById('create-poll-form');
+const voteForm = document.getElementById('vote-form');
+const resultsDiv = document.getElementById('results');
 
-// Vote for a poll option
-router.post('/vote/:pollId/:optionId', (req, res) => {
-    const { pollId, optionId } = req.params;
-
-    const conn = await pg.connect(config);
+// Create poll
+createPollForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(createPollForm);
+    const data = {
+        question: formData.get('question'),
+        options: Array.from(formData.getAll('option'))
+    };
 
     try {
-        // Check if the option exists
-        const query = 'SELECT * FROM poll_options WHERE id = $1';
-        const result = await conn.query(query, [optionId]);
+        const response = await fetch('/api/create-poll', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Option not found' });
+        if (!response.ok) {
+            throw new Error('Failed to create poll');
         }
 
-        // Update the vote count
-        const queryUpdate = 'UPDATE poll_options SET votes = $1 WHERE id = $2';
-        const resultUpdate = await conn.query(queryUpdate, [
-            result.rows[0].votes + 1,
-            optionId
-        ]);
-
-        res.json({ success: true });
+        const { pollId } = await response.json();
+        window.location.href = `/poll/${pollId}`;
     } catch (error) {
-        console.error('Error voting:', error);
-        res.status(500).json({ error: 'Failed to vote' });
-    } finally {
-        conn.end();
+        console.error('Error creating poll:', error);
+        alert('Failed to create poll');
     }
 });
 
-// Get poll results
-router.get('/poll-results/:id', (req, res) => {
-    const conn = await pg.connect(config);
+// Vote
+voteForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(voteForm);
+    const data = {
+        pollId: formData.get('pollId'),
+        optionId: formData.get('optionId')
+    };
 
     try {
-        // Get the poll details
-        const pollQuery = 'SELECT * FROM polls WHERE id = $1';
-        const pollResult = await conn.query(pollQuery, [req.params.id]);
+        const response = await fetch('/api/vote', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
 
-        if (pollResult.rows.length === 0) {
-            return res.status(404).json({ error: 'Poll not found' });
+        if (!response.ok) {
+            throw new Error('Failed to record vote');
         }
 
-        // Calculate results
-        const options = pollResult.rows[0].options;
-        const totalVotes = options.reduce((sum, option) => sum + option.votes, 0);
-
-        const results = options.map(option => ({
-            text: option.text,
-            votes: option.votes,
-            percentage: (option.votes / totalVotes) * 100
-        }));
-
-        res.json({ results });
+        updateResults();
     } catch (error) {
-        console.error('Error calculating results:', error);
-        res.status(500).json({ error: 'Failed to calculate results' });
-    } finally {
-        conn.end();
+        console.error('Error recording vote:', error);
+        alert('Failed to record vote');
     }
 });
 
-module.exports = router;
+// Update results
+async function updateResults() {
+    try {
+        const pollId = window.location.pathname.split('/').pop();
+        const response = await fetch(`/api/results?pollId=${pollId}`);
+        const results = await response.json();
+
+        resultsDiv.innerHTML = results.map(result => `
+            <div>
+                <p>${result.option}</p>
+                <p>Votes: ${result.votes}</p>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error fetching results:', error);
+    }
+}
+
+// Initial results load
+updateResults();

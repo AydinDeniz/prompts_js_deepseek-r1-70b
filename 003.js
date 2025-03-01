@@ -1,55 +1,48 @@
-function dijkstra(graph, start, end) {
+function dijkstra(graph, startNode, endNode) {
     const distances = {};
     const predecessors = {};
+    let priorityQueue = [];
 
-    // Initialize distances to infinity
-    for (let node in graph) {
+    // Initialize distances and priority queue
+    for (const node in graph) {
         distances[node] = Infinity;
-    }
-    distances[start] = 0;
-
-    // Initialize predecessors
-    for (let node in graph) {
         predecessors[node] = null;
     }
-
-    // Priority queue: [distance, node]
-    const priorityQueue = [];
-    priorityQueue.push([0, start]);
+    distances[startNode] = 0;
+    priorityQueue.push([0, startNode]);
 
     while (priorityQueue.length > 0) {
-        let [currentDistance, currentNode] = priorityQueue.shift();
+        priorityQueue.sort((a, b) => a[0] - b[0]);
+        const [currentDistance, currentNode] = priorityQueue.shift();
 
-        // If we've already found a better path, skip this node
-        if (currentDistance > distances[currentNode]) {
-            continue;
-        }
+        if (currentNode === endNode) break;
 
-        // If we've reached the end node, reconstruct the path
-        if (currentNode === end) {
-            let path = [];
-            let current = end;
-            while (current !== null) {
-                path.push(current);
-                current = predecessors[current];
-            }
-            path.reverse();
-            return { distance: distances[end], path: path };
-        }
+        if (currentDistance > distances[currentNode]) continue;
 
-        // Explore neighbors
-        for (let neighbor in graph[currentNode]) {
+        for (const neighbor in graph[currentNode]) {
             const weight = graph[currentNode][neighbor];
-            const tentativeDistance = currentDistance + weight;
+            const distance = currentDistance + weight;
 
-            if (tentativeDistance < distances[neighbor]) {
-                distances[neighbor] = tentativeDistance;
+            if (distance < distances[neighbor]) {
+                distances[neighbor] = distance;
                 predecessors[neighbor] = currentNode;
-                priorityQueue.push([tentativeDistance, neighbor]);
+                priorityQueue.push([distance, neighbor]);
             }
         }
     }
 
-    // If end node is unreachable
-    return { distance: null, path: null };
+    function getPath() {
+        const path = [];
+        let node = endNode;
+        while (node !== null) {
+            path.unshift(node);
+            node = predecessors[node];
+        }
+        return path;
+    }
+
+    return {
+        distance: distances[endNode],
+        path: getPath()
+    };
 }

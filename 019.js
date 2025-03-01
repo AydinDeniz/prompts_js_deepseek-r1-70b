@@ -1,166 +1,112 @@
-// backend/app.js
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const { Pool } = require('pg');
-const moment = require('moment');
+// Frontend validation
+function validateForm() {
+    const requiredFields = [
+        'firstName', 'lastName', 'email', 'phone',
+        'date', 'time', 'doctor'
+    ];
 
-const app = express();
-const port = process.env.PORT || 3000;
-
-// Database configuration
-const dbConfig = {
-  user: 'your_username',
-  host: 'localhost',
-  database: 'healthcare',
-  password: 'your_password',
-  port: 5432,
-};
-
-const pool = new Pool(dbConfig);
-
-// Middleware
-app.use(bodyParser.json());
-app.use(cors());
-
-// Routes
-app.post('/api/doctors', getDoctors);
-app.post('/api/slots', getAvailableSlots);
-app.post('/api/book', bookAppointment);
-app.post('/api/patient/appointments', getPatientAppointments);
-
-// Get available doctors
-async function getDoctors(req, res) {
-  try {
-    const result = await pool.query('SELECT * FROM doctors WHERE is_available = true');
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching doctors:', error);
-    res.status(500).json({ error: 'Failed to fetch doctors' });
-  }
-}
-
-// Get available time slots
-async function getAvailableSlots(req, res) {
-  try {
-    const { doctorId, date } = req.body;
-    if (!doctorId || !date) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    for (const field of requiredFields) {
+        const input = document.getElementById(field);
+        if (!input.value.trim()) {
+            alert(`${field} is required`);
+            return false;
+        }
     }
 
-    const formattedDate = moment(date).format('YYYY-MM-DD');
-    const result = await pool.query(`
-      SELECT * FROM time_slots 
-      WHERE doctor_id = $1 AND date = $2 AND is_available = true
-      ORDER BY time`, [doctorId, formattedDate]);
-
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching slots:', error);
-    res.status(500).json({ error: 'Failed to fetch slots' });
-  }
-}
-
-// Book appointment
-async function bookAppointment(req, res) {
-  try {
-    const { doctorId, slotId, patientInfo } = req.body;
-    if (!doctorId || !slotId || !patientInfo) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    const email = document.getElementById('email').value;
+    if (!validateEmail(email)) {
+        alert('Please enter a valid email address');
+        return false;
     }
 
-    // Insert appointment
-    const result = await pool.query(`
-      INSERT INTO appointments 
-      (doctor_id, slot_id, patient_name, patient_email, patient_phone)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *`, 
-      [doctorId, slotId, 
-       patientInfo.name, patientInfo.email, patientInfo.phone]);
-
-    // Update slot availability
-    await pool.query('UPDATE time_slots SET is_available = false WHERE id = $1', [slotId]);
-
-    res.status(201).json({ appointment: result.rows[0] });
-  } catch (error) {
-    console.error('Error booking appointment:', error);
-    res.status(500).json({ error: 'Failed to book appointment' });
-  }
-}
-
-// Get patient appointments
-async function getPatientAppointments(req, res) {
-  try {
-    const { patientEmail } = req.body;
-    if (!patientEmail) {
-      return res.status(400).json({ error: 'Missing patient email' });
+    const phone = document.getElementById('phone').value;
+    if (!validatePhone(phone)) {
+        alert('Please enter a valid phone number');
+        return false;
     }
 
-    const result = await pool.query(`
-      SELECT * FROM appointments 
-      WHERE patient_email = $1
-      ORDER BY appointment_date DESC`, [patientEmail]);
-
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching appointments:', error);
-    res.status(500).json({ error: 'Failed to fetch appointments' });
-  }
+    return true;
 }
 
-// Start server
-app.listen(port, () => {
-  console.log(`Healthcare appointment scheduler running on port ${port}`);
-});
-// frontend/app.js
-$(document).ready(function() {
-  // Calendar initialization
-  $('#calendar').fullCalendar({
-    headerToolbar: {
-      left: 'prev,next today',
-      center: 'title',
-      right: 'month,agendaWeek,agendaDay'
-    },
-    events: '/api/events',
-    selectable: true,
-    selectHelper: true,
-    select: function(start, end, allDay) {
-      // Handle date selection
-      const formattedStart = start.format();
-      const formattedEnd = end.format();
-      // Call backend to book appointment
-    },
-    eventDidMount: function(info) {
-      // Add event details
-    }
-  });
+// Email validation
+function validateEmail(email) {
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailPattern.test(email);
+}
 
-  // Form submission
-  $('#bookingForm').submit(function(e) {
-    e.preventDefault();
-    const formData = $(this).serializeArray();
-    // Convert to object
-    const data = {};
-    formData.forEach(item => {
-      data[item.name] = item.value;
+// Phone validation
+function validatePhone(phone) {
+    const phonePattern = /^\d{10}$/;
+    return phonePattern.test(phone);
+}
+
+// Initialize calendar
+document.addEventListener('DOMContentLoaded', function() {
+    const calendarEl = document.getElementById('calendar');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'timeGridWeek',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,dayGridWeek,dayGridDay'
+        },
+        events: '/api/appointments',
+        selectable: true,
+        select: function(info) {
+            showAppointmentForm(info.startStr, info.endStr);
+        }
     });
-    // Validate inputs
-    if (!data.doctor || !data.date || !data.patientName) {
-      alert('Please fill in all required fields');
-      return;
-    }
-    // Send request to backend
-    $.ajax({
-      type: 'POST',
-      url: '/api/book',
-      data: JSON.stringify(data),
-      contentType: 'application/json',
-      success: function(response) {
-        // Handle success
-      },
-      error: function(xhr, status, error) {
-        // Handle error
-      }
-    });
-  });
+    calendar.render();
 });
+
+// Show appointment form
+function showAppointmentForm(start, end) {
+    document.getElementById('appointmentForm').style.display = 'block';
+    document.getElementById('date').value = start;
+    document.getElementById('time').value = end;
+}
+
+// Hide appointment form
+function hideAppointmentForm() {
+    document.getElementById('appointmentForm').style.display = 'none';
+}
+
+// Submit appointment
+async function submitAppointment() {
+    if (!validateForm()) return;
+
+    const appointmentData = {
+        firstName: document.getElementById('firstName').value,
+        lastName: document.getElementById('lastName').value,
+        email: document.getElementById('email').value,
+        phone: document.getElementById('phone').value,
+        date: document.getElementById('date').value,
+        time: document.getElementById('time').value,
+        doctor: document.getElementById('doctor').value
+    };
+
+    try {
+        const response = await fetch('/api/appointments', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(appointmentData),
+        });
+
+        if (!response.ok) {
+            throw new Error('Appointment booking failed');
+        }
+
+        const data = await response.json();
+        alert('Appointment booked successfully');
+        window.location.reload();
+    } catch (error) {
+        console.error('Error booking appointment:', error);
+        alert('Failed to book appointment');
+    }
+}
+
+// Event listeners
+document.getElementById('submitAppointment').addEventListener('click', submitAppointment);
+document.getElementById('cancelAppointment').addEventListener('click', hideAppointmentForm);

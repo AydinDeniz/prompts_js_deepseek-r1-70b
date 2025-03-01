@@ -1,162 +1,101 @@
-// File API for video upload
-const fileInput = document.getElementById('fileInput');
-const fileNameInput = document.getElementById('fileName');
-const categorySelect = document.getElementById('categorySelect');
-const uploadButton = document.getElementById('uploadButton');
-const uploadProgress = document.getElementById('uploadProgress');
-const uploadMessages = document.getElementById('uploadMessages');
+// Frontend code
+const videoInput = document.getElementById('video-input');
+const uploadButton = document.getElementById('upload-button');
+const progressBar = document.getElementById('progress-bar');
+const preview = document.getElementById('preview');
 
-// Video preview
-const preview = document.getElementById('videoPreview');
-const previewContainer = document.getElementById('videoPreviewContainer');
+// Initialize AWS S3
+const AWS = require('aws-sdk');
+const s3 = new AWS.S3({
+    region: 'your-region',
+    accessKeyId: 'your-access-key',
+    secretAccessKey: 'your-secret-key'
+});
 
 // MongoDB connection
-const mongoClient = require('mongodb');
-const db = new mongoClient.MongoClient('mongodb://localhost:27017/videoUploadDB');
+const mongoose = require('mongoose');
+mongoose.connect('mongodb://localhost/videos', { useNewUrlParser: true, useUnifiedTopology: true });
 
-// AWS S3 configuration
-const s3 = new AWS.S3({
-    accessKeyId: 'your-s3-access-key',
-    secretAccessKey: 'your-s3-secret-key',
-    region: 'your-region'
+// Video schema
+const videoSchema = new mongoose.Schema({
+    title: String,
+    description: String,
+    category: String,
+    uploadedBy: String,
+    videoId: String,
+    uploadedAt: { type: Date, default: Date.now }
 });
 
-// Video metadata schema
-interface VideoMetadata {
-    _id: string;
-    title: string;
-    description: string;
-    category: string;
-    uploadedBy: string;
-    uploadDate: Date;
-    videoUrl: string;
-}
-
-// Initialize database
-async function initDatabase() {
-    try {
-        const result = await db.collection('videos').create();
-        const result2 = await db.collection('categories').create();
-        console.log('Databases initialized successfully');
-    } catch (error) {
-        console.error('Database initialization error:', error);
-    }
-}
+const Video = mongoose.model('Video', videoSchema);
 
 // Handle file selection
-fileInput.addEventListener('change', function(e) {
+videoInput.addEventListener('change', function(e) {
     const file = e.target.files[0];
-
     if (file) {
-        previewContainer.innerHTML = '';
-        const reader = new FileReader();
+        preview.src = URL.createObjectURL(file);
+        uploadButton.disabled = false;
+    }
+});
 
-        reader.onload = function(event) {
-            const videoElement = document.createElement('video');
-            videoElement.controls = true;
-            videoElement.src = event.target.result;
-            videoElement.play();
-            preview.appendChild(videoElement);
+// Upload video
+uploadButton.addEventListener('click', async function() {
+    const file = videoInput.files[0];
+    const formData = new FormData(document.getElementById('upload-form'));
+    
+    try {
+        // Generate unique video ID
+        const videoId = Math.random().toString(36).substr(2, 9);
+        
+        // Upload to S3
+        const uploadParams = {
+            Bucket: 'your-bucket-name',
+            Key: `videos/${videoId}`,
+            Body: file,
+            ContentType: file.type
         };
 
-        reader.readAsDataURL(file);
+        const upload = await s3.upload(uploadParams).promise();
+        const videoUrl = upload.Location;
+
+        // Save metadata to MongoDB
+        const video = new Video({
+            title: formData.get('title'),
+            description: formData.get('description'),
+            category: formData.get('category'),
+            uploadedBy: 'current-user-id',
+            videoId
+        });
+
+        await video.save();
+
+        alert('Video uploaded successfully!');
+        window.location.reload();
+    } catch (error) {
+        console.error('Upload error:', error);
+        alert('Failed to upload video');
     }
 });
 
-// Handle upload
-uploadButton.addEventListener('click', async function() {
-    if (!fileInput.value) {
-        showError('Please select a video file first');
-        return;
-    }
-
-    const formData = new FormData();
-    const videoFile = fileInput.files[0];
-
-    // Add metadata
-    const metadata = {
-        title: document.getElementById('titleInput').value,
-        description: document.getElementById('descriptionInput').value,
-        category: document.getElementById('categorySelect').value,
-        uploadedBy: 'user' // Replace with actual user ID
-    };
-
-    // Add video file
-    formData.append('video', videoFile);
-
-    // Add metadata to FormData
-    formData.append('metadata', JSON.stringify(metadata));
-
-    // Upload to S3
-    const upload = s3.put({
-        Bucket: 'your-aws-s3-bucket',
-        Key: `${Date.now()}-${videoFile.name}`,
-        ContentType: 'video/mp4',
-        Body: formData
-    }).on('complete', function(response) {
-        if (response.error) {
-            showError(response.error);
-        } else {
-            uploadMessages.textContent = 'Upload completed successfully!';
-            uploadMessages.style.color = 'green';
-
-            // Store metadata in MongoDB
-            try {
-                const result = await db.collection('videos').insertOne({
-                    _id: `${Date.now()}`,
-                    ...metadata,
-                    videoUrl: `https://your-aws-s3-bucket/key/${metadata._id}`
-                });
-                if (result) {
-                    showSuccess('Video uploaded successfully!');
-                    window.location.reload();
-                } else {
-                    showError('Failed to save video metadata');
-                }
-            } catch (error) {
-                showError('Failed to save video metadata');
-            }
-        }
-    });
-
-    uploadMessages.textContent = 'Uploading video...';
-    uploadMessages.style.color = 'black';
+// Update progress bar
+s3.upload(uploadParams, function(err, data) {
+    if (err) throw err;
+    progressBar.style.width = (data.loaded * 100) / data.total + '%';
 });
 
-// Handle upload progress
-uploadButton.addEventListener('progress', function(e) {
-    if (e.lengthComputable) {
-        const progress = (e.loaded / e.total) * 100;
-        uploadProgress.style.width = `${progress}%`;
-        uploadProgress.textContent = `${Math.round(progress)}%`;
+// Initialize progress
+let interval;
+s3.upload(uploadParams, function(err, data) {
+    if (err) throw err;
+    if (data.httpUploadProgress) {
+        interval = setInterval(() => {
+            progressBar.style.width = 
+                (data.httpUploadProgress.loaded * 100) / 
+                data.httpUploadProgress.total + '%';
+        }, 1000);
+    }
+}).on('httpUploadProgress', function(progress) {
+    if (progress.loaded === progress.total) {
+        clearInterval(interval);
+        progressBar.style.width = '100%';
     }
 });
-
-// Handle upload error
-uploadButton.addEventListener('error', function(e) {
-    showError('Upload failed due to network error');
-});
-
-// Close preview
-previewContainer.addEventListener('click', function() {
-    previewContainer.style.display = 'none';
-});
-
-// Show error messages
-function showError(message) {
-    uploadMessages.textContent = message;
-    uploadMessages.style.color = 'red';
-}
-
-// Show success messages
-function showSuccess(message) {
-    uploadMessages.textContent = message;
-    uploadMessages.style.color = 'green';
-    setTimeout(() => {
-        uploadMessages.style.color = 'black';
-        uploadMessages.textContent = '';
-    }, 3000);
-}
-
-// Initialize
-initDatabase();

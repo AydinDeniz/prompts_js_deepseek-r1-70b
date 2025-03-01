@@ -1,105 +1,139 @@
-// Initialize D3.js
-        let svg, chart;
-        let width = 800, height = 300;
-        let margin = { top: 20, right: 40, bottom: 20, left: 40 };
+// Client-side code
+const socket = io();
+const temperatureChart = document.getElementById('temperature-chart');
+const humidityChart = document.getElementById('humidity-chart');
+const energyChart = document.getElementById('energy-chart');
+const deviceControls = document.getElementById('device-controls');
 
-        // Configure D3.js charts
-        function initCharts() {
-            // Temperature Chart
-            const tempChart = createLineChart("#temperature-chart", 
-                "Temperature (°C)", 25);
-            
-            // Humidity Chart
-            const humidChart = createLineChart("#humidity-chart", 
-                "Humidity (%)", 65);
-            
-            // Energy Chart
-            const energyChart = createLineChart("#energy-chart", 
-                "Energy (kWh)", 2.5);
-        }
+// D3.js setup
+const margin = { top: 20, right: 20, bottom: 30, left: 40 };
+const width = temperatureChart.clientWidth - margin.left - margin.right;
+const height = temperatureChart.clientHeight - margin.top - margin.bottom;
 
-        function createLineChart(containerId, title, value) {
-            const svg = d3.select(containerId)
-                .append("svg")
-                .attr("width", width)
-                .attr("height", height)
-                .append("g")
-                .attr("transform", `translate(${margin.left},${margin.top})`);
+// Temperature chart
+const tempSvg = d3.select(temperatureChart)
+    .append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
 
-            // Add axes
-            const x = d3.axisBottom().tickSize(5);
-            const y = d3.axisLeft().tickSize(5);
+// Humidity chart
+const humidSvg = d3.select(humidityChart)
+    .append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
 
-            svg.append("g").attr("grid").append("g").attr("grid").append("g");
-            
-            // Add title
-            svg.append("text")
-                .attr("x", margin.left + width/2)
-                .attr("y", margin.top)
-                .attr("text-anchor", "middle")
-                .style("text-anchor", "middle")
-                .text(title);
+// Energy chart
+const energySvg = d3.select(energyChart)
+    .append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
 
-            // Create chart
-            const chart = svg.append("g")
-                .attr("fill", "none")
-                .attr("stroke", "#4CAF50")
-                .attr("stroke-width", 2);
+// Real-time data update
+socket.on('sensor-data', (data) => {
+    updateCharts(data);
+});
 
-            return chart;
-        }
+// Device control
+deviceControls.addEventListener('click', (e) => {
+    if (e.target.dataset.device) {
+        const deviceId = e.target.dataset.device;
+        const action = e.target.dataset.action;
+        socket.emit('device-control', { deviceId, action });
+    }
+});
 
-        // Initialize charts
-        initCharts();
+// Initial data fetch
+socket.emit('get-sensor-data');
 
-        // WebSocket initialization
-        const socket = io();
+// Update charts
+function updateCharts(data) {
+    // Temperature line chart
+    const tempLine = d3.line()
+        .x(d => d.time)
+        .y(d => d.temperature);
 
-        // Update display values
-        function updateDisplay(value, id) {
-            const display = document.getElementById(id);
-            display.textContent = value;
-        }
+    const tempPath = tempSvg.append('path')
+        .datum(data.temperatureData)
+        .attr('class', 'line')
+        .attr('d', tempLine)
+        .attr('stroke', 'red')
+        .attr('stroke-width', 1.5)
+        .attr('fill', 'none');
 
-        // Update chart data
-        function updateChartData(chart, data) {
-            chart.selectAll("line")
-                .data(data)
-                .enter().append("line")
-                .attr("x", d => d.x)
-                .attr("y", d => d.y)
-                .attr("stroke", "#4CAF50")
-                .attr("stroke-width", 2);
-        }
+    // Humidity line chart
+    const humidLine = d3.line()
+        .x(d => d.time)
+        .y(d => d.humidity);
 
-        // Handle WebSocket events
-        socket.on('update', (data) => {
-            // Update display values
-            updateDisplay(data.temperature, 'temperature-display');
-            updateDisplay(data.humidity, 'humidity-display');
-            updateDisplay(data.energy, 'energy-display');
+    const humidPath = humidSvg.append('path')
+        .datum(data.humidityData)
+        .attr('class', 'line')
+        .attr('d', humidLine)
+        .attr('stroke', 'blue')
+        .attr('stroke-width', 1.5)
+        .attr('fill', 'none');
 
-            // Update chart data
-            const tempChart = d3.select("#temperature-chart g");
-            const tempData = data.temperatureHistory;
-            updateChartData(tempChart, tempData);
+    // Energy bar chart
+    const energyBars = energySvg.selectAll('rect')
+        .data(data.energyData)
+        .enter()
+        .append('rect')
+        .attr('x', (d, i) => i * (width / data.energyData.length))
+        .attr('width', width / data.energyData.length)
+        .attr('height', d => d.value)
+        .attr('fill', 'green');
 
-            const humidChart = d3.select("#humidity-chart g");
-            const humidData = data.humidityHistory;
-            updateChartData(humidChart, humidData);
+    // Add axes and labels
+    tempSvg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(d3.scaleLinear().domain([0, 24])));
+    tempSvg.append('g')
+        .call(d3.axisLeft(d3.scaleLinear().domain([0, 40])));
+    tempSvg.append('text')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -height/2)
+        .attr('y', 15)
+        .style('text-anchor', 'middle')
+        .text('Temperature (°C)');
 
-            const energyChart = d3.select("#energy-chart g");
-            const energyData = data.energyHistory;
-            updateChartData(energyChart, energyData);
-        });
+    humidSvg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(d3.scaleLinear().domain([0, 24])));
+    humidSvg.append('g')
+        .call(d3.axisLeft(d3.scaleLinear().domain([0, 100])));
+    humidSvg.append('text')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -height/2)
+        .attr('y', 15)
+        .style('text-anchor', 'middle')
+        .text('Humidity (%)');
 
-        // Handle button clicks
-        document.getElementById('heatingOnBtn').addEventListener('click', () => {
-            socket.emit('command', { type: 'heating', state: true });
-            document.getElementById('heatingOnBtn').classList.toggle('active');
-        });
+    energySvg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(d3.scaleBand().domain(data.energyData.map(d => d.time))));
+    energySvg.append('g')
+        .call(d3.axisLeft(d3.scaleLinear().domain([0, 1000])));
+    energySvg.append('text')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -height/2)
+        .attr('y', 15)
+        .style('text-anchor', 'middle')
+        .text('Energy Consumption (kWh)');
+}
 
-        document.getElementById('coolingOffBtn').addEventListener('click', () => {
-            socket.emit('command', { type: 'cooling', state: false });
-            document.getElementById('coolingOffBtn').classList.toggle('active');
-        });
+// Initialize dashboard
+socket.on('connect', () => {
+    console.log('Connected to smart home server');
+    socket.emit('get-sensor-data');
+});
+
+// Handle disconnection
+socket.on('disconnect', () => {
+    console.log('Disconnected from smart home server');
+});

@@ -1,52 +1,37 @@
-function debounce(func, wait) {
-    let timeout;
-
-    function debounced(...args) {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => {
-            func.apply(undefined, args);
+// Debounce Function
+function debounce(fn, wait = 500) {
+    let timeoutId;
+    return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+            fn.apply(this, args);
         }, wait);
-    }
-
-    return debounced;
+    };
 }
 
-function throttle(func, wait) {
-    let lastExecTime = 0;
-    let timeout;
-
-    function throttled(...args) {
-        const currentTime = Date.now();
-
-        if (currentTime - lastExecTime < wait) {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                func.apply(undefined, args);
-                lastExecTime = Date.now();
-            }, wait);
-        } else {
-            func.apply(undefined, args);
-            lastExecTime = Date.now();
+// Throttle Function
+function throttle(fn, delay = 500) {
+    let lastCallTime;
+    return function(...args) {
+        const now = Date.now();
+        if (!lastCallTime || now - lastCallTime >= delay) {
+            fn.apply(this, args);
+            lastCallTime = now;
         }
-    }
-
-    return throttled;
+    };
 }
 
-// Example usage for debounce:
-const debounceFunc = debounce(() => {
-    console.log(' Debounced function called');
-}, 1000);
+// Example usage with window resize event
+const handleResize = () => {
+    console.log('Window resized to:', window.innerWidth, 'x', window.innerHeight);
+};
 
-// Example usage for throttle:
-const throttleFunc = throttle(() => {
-    console.log(' Throttled function called');
-}, 500);
+// Apply debounce to handleResize
+const debouncedHandleResize = debounce(handleResize);
 
-window.addEventListener('resize', debounce(() => {
-    console.log('Window resized');
-}, 500));
+window.addEventListener('resize', debouncedHandleResize);
 
-window.addEventListener('scroll', throttle(() => {
-    console.log('Window scrolled');
-}, 200));
+// Apply throttle to handleResize
+const throttledHandleResize = throttle(handleResize);
+
+window.addEventListener('resize', throttledHandleResize);

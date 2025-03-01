@@ -1,73 +1,80 @@
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('userForm');
-    const name = document.getElementById('name');
-    const email = document.getElementById('email');
-    const phone = document.getElementById('phone');
-    const errorMessage = document.getElementById('error');
-    const successMessage = document.getElementById('success');
-
-    function validateForm() {
-        let isValid = true;
-
-        // Check name
-        if (name.value.trim() === '') {
-            errorMessage.textContent = 'Name is required';
-            isValid = false;
+function validateAndSubmitForm(formData) {
+    // Validation logic
+    const validationRules = {
+        name: {
+            required: true,
+            minLength: 2,
+            maxLength: 50
+        },
+        email: {
+            required: true,
+            pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+            maxLength: 100
+        },
+        phone: {
+            required: true,
+            pattern: /^\d{10}$/,
+            maxLength: 10
         }
+    };
 
-        // Check email
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email.value)) {
-            errorMessage.textContent = 'Invalid email format';
-            isValid = false;
-        }
+    let isValid = true;
 
-        // Check phone number
-        const phoneRegex = /^\d{3}-\d{3}-\d{4}$/;
-        if (!phoneRegex.test(phone.value)) {
-            errorMessage.textContent = 'Invalid phone number';
-            isValid = false;
-        }
-
-        return isValid;
+    // Validate name
+    if (!formData.name) {
+        alert('Name is required');
+        isValid = false;
+    } else if (formData.name.length < validationRules.name.minLength || formData.name.length > validationRules.name.maxLength) {
+        alert('Name must be between 2 and 50 characters');
+        isValid = false;
     }
 
-    async function handleSubmit() {
-        errorMessage.textContent = '';
-        successMessage.textContent = '';
-
-        if (validateForm()) {
-            try {
-                const formData = {
-                    name: name.value,
-                    email: email.value,
-                    phone: phone.value
-                };
-
-                const response = await fetch('https://your-node-js-endpoint.herokuapp.com/api/users', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(formData)
-                });
-
-                if (response.ok) {
-                    successMessage.textContent = 'User data submitted successfully!';
-                    form.reset();
-                } else {
-                    throw new Error('Submission failed');
-                }
-            } catch (error) {
-                errorMessage.textContent = error.message;
-            }
-        }
+    // Validate email
+    if (!formData.email) {
+        alert('Email is required');
+        isValid = false;
+    } else if (!validationRules.email.pattern.test(formData.email)) {
+        alert('Please enter a valid email address');
+        isValid = false;
+    } else if (formData.email.length > validationRules.email.maxLength) {
+        alert('Email must be less than 100 characters');
+        isValid = false;
     }
 
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        handleSubmit();
+    // Validate phone number
+    if (!formData.phone) {
+        alert('Phone number is required');
+        isValid = false;
+    } else if (!validationRules.phone.pattern.test(formData.phone)) {
+        alert('Please enter a valid 10-digit phone number');
+        isValid = false;
+    } else if (formData.phone.length > validationRules.phone.maxLength) {
+        alert('Phone number must be 10 digits');
+        isValid = false;
+    }
+
+    if (!isValid) return;
+
+    // Submit data using Fetch API
+    fetch('/api/submit', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Success:', data);
+        alert('Form submitted successfully');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error submitting form. Please try again later.');
     });
-});
-</script>
+}

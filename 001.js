@@ -1,58 +1,50 @@
-function jsonToCSV(json) {
-    // Check if the input is an array
-    if (!Array.isArray(json)) {
-        json = [json];
+function jsonToCSV(jsonData, fileName) {
+    // Check if json is empty
+    if (Object.keys(jsonData).length === 0) {
+        console.log('No data to convert');
+        return;
     }
 
-    // Helper function to collect all field names from nested objects
-    function collectFieldNames(obj, fieldNames) {
-        if (typeof obj !== 'object' || obj === null) {
-            return;
-        }
+    // Get all headers
+    const headers = getHeaders(jsonData[0]);
 
-        Object.keys(obj).forEach(key => {
-            fieldNames.push(key);
-            // Recursively collect field names from nested objects
-            if (typeof obj[key] === 'object' && obj[key] !== null) {
-                collectFieldNames(obj[key], fieldNames);
-            }
-        });
-    }
-
-    // Collect all field names from the JSON data
-    const fieldNames = [];
-    collectFieldNames(json[0], fieldNames);
-
-    // Create CSV header
-    const csvHeader = fieldNames.join(',');
-
-    // Create CSV rows
-    const csvRows = json.map(obj => {
-        const row = fieldNames.map(fieldName => {
-            // Check if the field exists in the current object
-            if (obj[fieldName] === undefined) {
-                return '';
-            }
-            // If the field's value is an object, stringify it
-            return typeof obj[fieldName] === 'object' ? JSON.stringify(obj[fieldName]) : obj[fieldName];
-        }).join(',');
-
-        return row;
+    // Create CSV content
+    let csvContent = headers.join(',') + '\n';
+    jsonData.forEach((row) => {
+        csvContent += getCSVRow(row, headers) + '\n';
     });
 
-    // Combine header and rows into the final CSV string
-    const csvContent = [csvHeader, ...csvRows].join('\n');
-
-    return csvContent;
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'data.csv';
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
-// Example usage:
-const json = {
-    name: {
-        first: "John",
-        last: "Doe"
-    },
-    age: 30
-};
+function getHeaders(obj, prefix = '') {
+    const headers = [];
+    for (const key in obj) {
+        if (typeof obj[key] === 'object' && obj[key] !== null) {
+            headers.push(...getHeaders(obj[key], prefix + key + '.'));
+        } else {
+            headers.push(prefix + key);
+        }
+    }
+    return headers;
+}
 
-console.log(jsonToCSV(json));
+function getCSVRow(obj, headers, prefix = '') {
+    const row = [];
+    headers.forEach((header) => {
+        const key = header.replace(prefix, '');
+        if (key in obj) {
+            row.push(obj[key]);
+        } else {
+            row.push('');
+        }
+    });
+    return row.join(',');
+}

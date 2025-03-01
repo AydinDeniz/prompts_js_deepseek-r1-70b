@@ -1,42 +1,54 @@
 const puppeteer = require('puppeteer');
 
-async function scrapeFromUrls(urls) {
+async function scrapeMultipleUrls(urls, selectors) {
+    // Initialize the browser and a new page
     const browser = await puppeteer.launch();
-    const results = {};
+    const page = await browser.newPage();
+
+    const results = [];
 
     for (const url of urls) {
-        try {
-            const page = await browser.newPage();
-            await page.goto(url);
+        await page.goto(url, { waitUntil: 'networkidle0' });
 
-            // Wait for the target element to load
-            const targetElement = await page.waitForSelector('h1.title');
-            const targetText = await targetElement.textContent();
+        const pageData = {
+            url: url,
+            data: {}
+        };
 
-            // Find and collect additional elements
-            const additionalElements = await page.$$('p.content');
-            const additionalTexts = await additionalElements.map(el => el.textContent());
+        for (const [elementName, selector] of Object.entries(selectors)) {
+            try {
+                // Wait for the element to be available
+                await page.waitForSelector(selector, { timeout: 5000 });
 
-            // Store the results
-            results[url] = {
-                targetText,
-                additionalTexts
-            };
-        } catch (error) {
-            console.error(`Error processing ${url}: ${error.message}`);
-            results[url] = {
-                targetText: '',
-                additionalTexts: []
-            };
+                // Extract the text content
+                const text = await page.$eval(selector, element => element.textContent);
+
+                pageData.data[elementName] = text.trim();
+            } catch (error) {
+                console.error(`Element '${selector}' not found on ${url}`);
+                pageData.data[elementName] = 'Element not found';
+            }
         }
+
+        results.push(pageData);
     }
 
     await browser.close();
     return results;
 }
 
-// Example usage:
-const urls = ['https://example.com/page1', 'https://example.com/page2'];
-const result = await scrapeFromUrls(urls);
+// Example usage
+const urls = [
+    'https://example.com/page1',
+    'https://example.com/page2'
+];
 
-console.log(result);
+const selectors = {
+    'title': 'title',
+    'header': 'h1',
+    'mainContent': '#main-content'
+};
+
+scrapeMultipleUrls(urls, selectors)
+    .then(data => console.log(data))
+    .catch(error => console.error('Error:', error));

@@ -1,128 +1,102 @@
-// WebSocket server setup
-const express = require('express');
-const WebSocket = require('ws');
-const firebase = require('firebase');
-const uuid = require('uuid');
+// Client-side code
+const socket = io();
+const editor = document.getElementById('editor');
+const userId = localStorage.getItem('userId') || UUID();
+const docId = window.location.pathname.split('/').pop();
 
-const app = express();
-const port = process.env.PORT || 3001;
+// Load document
+socket.emit('load-doc', docId);
 
-// Initialize Firebase
-const firebaseConfig = {
-    apiKey: 'your-firebase-api-key',
-    authDomain: 'your-firebase-project.firebaseapp.com',
-    databaseURL: 'your-firebase-database-url',
-    projectId: 'your-firebase-project-id',
-    storageBucket: 'your-firebase-storage-bucket.appspot.com',
-    messagingSenderId: 'your-messaging-send-id',
-    appId: 'your-app-id'
-};
-
-firebase.initializeApp(firebaseConfig);
-
-// Database models
-const db = firebase.database();
-
-// Text editor model
-const EditorModel = db.ref('.editor');
-
-// Users model
-const UsersModel = db.ref('.users');
-
-// Version history model
-const VersionHistoryModel = db.ref('.versions');
-
-// Create Express server
-app.use(express.static('public'));
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+// Handle document load
+socket.on('doc-loaded', (data) => {
+    editor.value = data.content;
+    editor.focus();
 });
 
-// Create WebSocket server
-const wss = new WebSocket.Server({ server: app });
+// Handle real-time updates
+socket.on('update', (update) => {
+    const range = document.createRange();
+    const selection = window.getSelection();
+    const offset = selection.focusOffset || 0;
 
-// WebSocket connection handler
-wss.on('connection', (ws) => {
-    console.log('New client connected');
+    editor.value = editor.value.substring(0, update.start) + update.text + editor.value.substring(update.end);
+});
 
-    // Generate a unique user ID
-    const userId = uuid.v4();
+// Track local changes
+let lastChange = 0;
+let timeout;
 
-    // Store user information
-    UsersModel.child(userId).set({
-        id: userId,
-        role: 'user' // Define roles like 'admin' or 'user'
-    });
-
-    ws.on('message', (message) => {
-        console.log('Received:', message.toString());
-
-        // Broadcast the message to all connected clients
-        wss.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(message);
-            }
+editor.addEventListener('input', (e) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        const text = e.target.value.substring(start, end);
+        
+        socket.emit('update', {
+            docId,
+            start,
+            end,
+            text,
+            userId
         });
-    });
-
-    ws.on('close', () => {
-        console.log('Client disconnected');
-        UsersModel.child(userId).remove();
-    });
+        
+        lastChange = Date.now();
+    }, 500);
 });
 
-// Text editor setup
-const editor = new MonacoEditor(document.getElementById('editor'), 'javascript');
-editor.value = 'Hello, World!';
-
-// Function to handle editor changes
-function handleEditorChange() {
-    const currentValue = editor.getValue();
-    const previousValue = EditorModel.previousValue();
-
-    // Create a new version
-    const versionId = uuid.v4();
-    const version = {
-        id: versionId,
-        content: currentValue,
-        userId: userId,
-        timestamp: Date.now()
-    };
-
-    VersionHistoryModel.push(version, (err) => {
-        if (err) {
-            console.error('Error saving version:', err);
-        } else {
-            EditorModel.set(version.content);
-            console.log('New version saved:', versionId);
-        }
-    });
-
-    // Update the editor with the latest version
-    EditorModel.set(version.content);
-}
-
-// Add event listeners for the editor
-editor.addEventListener('input', handleEditorChange);
-
-// Initialize the editor with the latest version
-EditorModel.on('value', (snapshot) => {
-    editor.setValue(snapshot.val());
-});
-
-// Handle user authentication
-firebase.auth().onAuthStateChange((user, authentication) => {
-    if (user) {
-        // Add user to users list
-        UsersModel.child(user.uid).set({
-            id: user.uid,
-            email: user.email,
-            role: 'admin' // Replace with actual role-based access control
-        });
-
-        console.log('User authenticated:', user.uid);
-    } else {
-        console.log('User logged out');
-        UsersModel.child(user.uid).remove();
+// User permissions
+socket.on('permissions', (perms) => {
+    if (!perms.includes(userId)) {
+        editor.readOnly = true;
+        alert('You do not have permission to edit this document');
     }
 });
+
+// Version history
+socket.on('history', (versions) => {
+    const history = document.getElementById('history');
+    history.innerHTML = versions.map(v => `
+        <div>${v.version} - ${v.user} - ${v.date}</div>
+    `).join('');
+});
+
+// Firebase setup
+const firebaseConfig = {
+    apiKey: 'your-api-key',
+    authDomain: 'your-auth-domain',
+    databaseURL: 'your-database-url'
+};
+
+const firebase = initializeApp(firebaseConfig);
+const db = getFirestore(firebase);
+
+// Save document
+async function saveDocument() {
+    await setDoc(doc(db, 'documents', docId), {
+        content: editor.value,
+        lastModified: serverTimestamp(),
+        version: increment(1)
+    });
+}
+
+// Real-time database listener
+onSnapshot(doc(db, 'documents', docId), (doc) => {
+    if (doc.exists()) {
+        editor.value = doc.data().content;
+    }
+});
+
+// Error handling
+socket.on('error', (error) => {
+    console.error('WebSocket error:', error);
+});
+
+// UUID generator
+function UUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0;
+        var v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}

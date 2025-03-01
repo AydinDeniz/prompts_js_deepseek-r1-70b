@@ -1,125 +1,115 @@
-// Save user preferences in localStorage
-const preferences = {
-    newsCategories: ['Technology', 'Politics', 'Business', 'Science', 'Sports', 'Entertainment'],
-    lastFetch: new Date().toISOString()
+// news-aggregator.js
+const newsContainer = document.getElementById('news-container');
+const preferencesForm = document.getElementById('preferences-form');
+const notificationBell = document.getElementById('notification-bell');
+
+// Initialize NewsAPI
+const newsapi = new NewsAPI('your-api-key');
+
+// Load user preferences
+let userPrefs = JSON.parse(localStorage.getItem('userPrefs')) || {
+    topics: [],
+    sources: [],
+    breakingNews: true
 };
 
-// Initialize preferences if not set
-if (!localStorage.getItem('newsPreferences')) {
-    localStorage.setItem('newsPreferences', JSON.stringify(preferences));
+// Load saved preferences
+function loadPreferences() {
+    const topicChecks = document.querySelectorAll('[name="topic"]');
+    topicChecks.forEach(check => {
+        if (userPrefs.topics.includes(check.value)) {
+            check.checked = true;
+        }
+    });
+
+    const sourceChecks = document.querySelectorAll('[name="source"]');
+    sourceChecks.forEach(check => {
+        if (userPrefs.sources.includes(check.value)) {
+            check.checked = true;
+        }
+    });
+
+    document.getElementById('breaking-news').checked = userPrefs.breakingNews;
 }
 
-// NewsAPI key (replace with your actual key)
-const newsApiKey = 'YOUR_NEWS_API_KEY';
+// Save user preferences
+function savePreferences() {
+    userPrefs.topics = Array.from(document.querySelectorAll('[name="topic"]:checked')).map(check => check.value);
+    userPrefs.sources = Array.from(document.querySelectorAll('[name="source"]:checked')).map(check => check.value);
+    userPrefs.breakingNews = document.getElementById('breaking-news').checked;
+    localStorage.setItem('userPrefs', JSON.stringify(userPrefs));
+}
 
-// Fetch news based on preferences
+// Fetch and display news
 async function fetchNews() {
     try {
-        const categories = preferences.newsCategories;
-        const response = await fetch(`https://newsapi.org/v2/top-headlines?country=us&pageSize=100&sources=${categories.join(',')}`, {
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': newsApiKey
-            }
+        const response = await newsapi.v2.everything({
+            q: userPrefs.topics.join(' OR '),
+            sources: userPrefs.sources.join(','),
+            sortBy: 'publishedAt',
+            apiKey: 'your-api-key'
         });
 
-        const data = await response.json();
-        displayNewsResults(data.articles);
+        displayNews(response.articles);
     } catch (error) {
-        showError('Failed to fetch news articles');
+        console.error('Error fetching news:', error);
     }
 }
 
-// Display news results
-function displayNewsResults(articles) {
-    const resultsContainer = document.getElementById('newsResults');
-    resultsContainer.innerHTML = '';
+// Display news articles
+function displayNews(articles) {
+    newsContainer.innerHTML = articles.map(article => `
+        <div class="article">
+            <h2><a href="${article.url}" target="_blank">${article.title}</a></h2>
+            <p>${article.description}</p>
+            <p>Source: ${article.source.name}</p>
+            <p>Published: ${new Date(article.publishedAt).toLocaleString()}</p>
+        </div>
+    `).join('');
+}
 
-    articles.forEach(article => {
-        const articleElement = document.createElement('div');
-        articleElement.className = 'news-item';
-        articleElement.innerHTML = `
-            <div class="news-image">
-                <img src="${article.urlToImage || 'https://placehold.co/400x300'}" alt="${article.title}">
-            </div>
-            <div class="news-content">
-                <h3>${article.title}</h3>
-                <p>${article.description}</p>
-                <div class="news-source">
-                    <span>${article.source.name}</span>
-                    <span class="news-date">${article.publishedAt}</span>
-                </div>
-            </div>
-        `;
-        resultsContainer.appendChild(articleElement);
+// Breaking news notifications
+async function checkBreakingNews() {
+    try {
+        const response = await newsapi.v2.everything({
+            q: userPrefs.topics.join(' OR '),
+            sources: userPrefs.sources.join(','),
+            sortBy: 'publishedAt',
+            apiKey: 'your-api-key',
+            pageSize: 1
+        });
+
+        if (response.articles.length > 0) {
+            const notification = new Notification('Breaking News', {
+                body: response.articles[0].title,
+                icon: response.articles[0].urlToImage
+            });
+            notificationBell.innerHTML = '●';
+        }
+    } catch (error) {
+        console.error('Error checking breaking news:', error);
+    }
+}
+
+// Event listeners
+preferencesForm.addEventListener('change', savePreferences);
+document.addEventListener('DOMContentLoaded', () => {
+    loadPreferences();
+    fetchNews();
+    setInterval(fetchNews, 300000); // Refresh every 5 minutes
+    setInterval(checkBreakingNews, 60000); // Check for breaking news every minute
+});
+
+// Notification system
+if ('Notification' in window) {
+    Notification.requestPermission(status => {
+        if (status === 'granted') {
+            console.log('Notification permission granted');
+        } else {
+            console.log('Notification permission denied');
+        }
     });
 }
 
-// Handle category selection
-document.getElementById('categorySelect').addEventListener('change', function() {
-    const categories = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(
-        el => el.value
-    );
-
-    preferences.newsCategories = categories;
-    localStorage.setItem('newsPreferences', JSON.stringify(preferences));
-    fetchNews();
-});
-
-// Handle search input
-document.getElementById('searchInput').addEventListener('input', function() {
-    const searchTerm = this.value.toLowerCase();
-
-    // Filter news based on search term
-    const filteredNews = preferences.newsCategories
-        .map(category =>
-            document.getElementById(category).files
-        )
-        .flat()
-        .filter(article => article.title.toLowerCase().includes(searchTerm));
-
-    displayNewsResults(filteredNews);
-});
-
-// Show error messages
-function showError(message) {
-    alert(message);
-}
-
-// Show success messages
-function showSuccess(message) {
-    alert(message);
-}
-
-// Initialize news aggregator
-document.addEventListener('DOMContentLoaded', function() {
-    // Display news based on preferences
-    fetchNews();
-
-    // Check for breaking news periodically
-    const newsInterval = setInterval(async function() {
-        try {
-            const latestNews = await fetch(`https://newsapi.org/v2/top-headlines?country=us&pageSize=10&sources=${preferences.newsCategories.join(',')}`, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': newsApiKey
-                }
-            });
-
-            const data = await latestNews.json();
-            const hasBreakingNews = data.articles.some(article =>
-                article.source.name === 'Breaking News' ||
-                article.title.toLowerCase().includes('breaking')
-            );
-
-            if (hasBreakingNews) {
-                showSuccess('Breaking news detected!');
-            }
-        } catch (error) {
-            console.error('News check failed:', error);
-        }
-    }, 3600000); // Check every hour
-
-    // Destroy interval on unload
-    window.addEventListener('unload', () => clearInterval(newsInterval));
-});
+// Initialize news feed
+fetchNews();
